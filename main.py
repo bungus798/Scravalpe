@@ -5,6 +5,18 @@ import pandas as pd
 import time
 import random
 from concurrent.futures import ProcessPoolExecutor
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+# Initialize the Chrome driver
+service = Service("/Users/anguskongyeung/Documents/Angus' Folder/Personal/Coding/Scravalpe/chromedriver")
+options = Options()
+options.add_argument("--headless")
+driver = webdriver.Chrome(service=service, options=options)
 
 # Base URL
 base_url = "https://www.vlr.gg"
@@ -32,6 +44,110 @@ def get_headers():
         "Referer": base_url,
     }
 
+def extract_round_data(map_element):
+    # Get the player stats
+    soup2 = BeautifulSoup(map_element, "html.parser")
+
+    # Get the player stats
+    score_header = soup2.find("div", class_="vm-stats-game-header")
+    team1_round_info = score_header.find("div", class_="team")
+    team1_round_score = team1_round_info.find("div").text
+
+    team2_round_info = score_header.find("div", class_="team mod-right")
+    team2_round_score = team2_round_info.find_all("div")[-1].text
+    
+    map_name = score_header.find("div", class_="map").find("span", style="position: relative;")
+    map_name = map_name.text.strip().replace("PICK", "").strip()
+    print(team1_round_score, team2_round_score, map_name)
+
+    # Get the player stats
+    team_1_table = soup2.find_all("table", class_="wf-table-inset")[0]
+    team_2_table = soup2.find_all("table", class_="wf-table-inset")[1]
+
+    table_data = []
+    
+    table_header = team_1_table.find("tr").find_all("th")
+    table_header = [th.get("title", "Player") for th in table_header]
+    table_header.insert(1, "Team")
+    table_data.append(table_header)
+
+    rows = team_1_table.find_all("tr")[1:]
+
+    for row in rows:
+        row_data = []
+
+        # Get the name of players
+        player_cell = row.find("td", class_="mod-player")
+        name_div = player_cell.find("div", class_="text-of")
+        player_name = name_div.get_text(strip=True)
+        row_data.append(player_name)
+
+        # Get the team name
+        team_1_name = team1_round_info.find('div', class_='team-name').text.strip()
+        row_data.append(team_1_name)
+
+        # Get the agents they played
+        spans = row.find_all('span', class_='mod-agent')
+        agent = [img['title'] for img in [span.find('img') for span in spans]]
+        row_data.append(agent[0] if len(agent) != 0 else " ")
+
+        # Get the numerical data
+        cols = row.find_all("span", class_=["mod-both"])
+        for col in cols:
+            row_data.append(col.text.strip())
+        table_data.append(row_data)
+    
+    rows = team_2_table.find_all("tr")[1:]
+    # Get the player stats from the second team
+    for row in rows:
+        row_data = []
+
+        # Get the name of players
+        player_cell = row.find("td", class_="mod-player")
+        name_div = player_cell.find("div", class_="text-of")
+        player_name = name_div.get_text(strip=True)
+        row_data.append(player_name)
+
+        # Get the team name
+        team_2_name = team2_round_info.find('div', class_='team-name').text.strip()
+        row_data.append(team_2_name)
+
+        # Get the agents they played
+        spans = row.find_all('span', class_='mod-agent')
+        agent = [img['title'] for img in [span.find('img') for span in spans]]
+        row_data.append(agent[0] if len(agent) != 0 else " ")
+
+        # Get the numerical data
+        cols = row.find_all("span", class_=["mod-both"])
+        for col in cols:
+            row_data.append(col.text.strip())
+        table_data.append(row_data)
+
+    # Create a DataFrame
+    df = pd.DataFrame(table_data[1:], columns=table_data[0])
+    print(df)
+
+def get_player_from_map_data(url):
+    try:
+        driver.get(url)
+        
+        maps = driver.find_elements(By.XPATH, value="//div[contains(@class, 'vm-stats-gamesnav-item') and @data-disabled='0']")
+        
+        if len(maps) <= 0:
+            only_map = driver.find_element(By.XPATH, "//div[contains(@class, 'vm-stats-game mod-active')]").get_attribute("innerHTML")
+            extract_round_data(only_map)
+
+        else:
+            # Click each map button and process the data
+            for i in range(1, len(maps)):
+                maps[i].click()
+                match_stats = driver.find_element(By.XPATH, "//div[contains(@class, 'vm-stats-game') and @style='display: block;']").get_attribute("innerHTML")
+                extract_round_data(match_stats)
+        
+    except Exception as e:
+        print(f"Error processing {url}: {e}")
+        return None
+    
 # Function to process a single match
 def process_match(url):
     try:
@@ -116,13 +232,14 @@ if __name__ == "__main__":
     # Start timer
     start_time = time.time()
 
-    # Number of pages to fetch
-    results_final_page_num = 1
+    # # Number of pages to fetch
+    # results_final_page_num = 1
 
-    # Process each page and save to CSV
-    for page_num in range(1, results_final_page_num + 1):
-        save_page_to_csv(page_num)
-
+    # # Process each page and save to CSV
+    # for page_num in range(1, results_final_page_num + 1):
+    #     save_page_to_csv(page_num)
+    get_player_from_map_data("https://www.vlr.gg/220448/fnatic-vs-evil-geniuses-champions-tour-2023-masters-tokyo-gf/?game=132713&tab=overview")
+    get_player_from_map_data("https://www.vlr.gg/434162/galatasaray-esports-vs-stanbul-wildcats-challengers-league-2025-t-rkiye-birlik-kickoff-w2")
     # End timer
     end_time = time.time()
     elapsed_time = end_time - start_time
