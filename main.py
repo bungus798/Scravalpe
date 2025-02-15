@@ -1,3 +1,8 @@
+"""
+    Author: Angus Yeung
+    Date: 2025-02-15
+    Description: This script scrapes match results from vlr.gg and saves them to CSV files.
+"""
 import os
 import requests
 from bs4 import BeautifulSoup
@@ -74,7 +79,6 @@ def extract_round_data(map_element):
     
     map_name = score_header.find("div", class_="map").find("span", style="position: relative;")
     map_name = map_name.text.strip().replace("PICK", "").strip()
-    # print(team1_round_score, team2_round_score, map_name)
 
     # Get the player stats
     team_1_table = soup2.find_all("table", class_="wf-table-inset")[0]
@@ -276,7 +280,7 @@ def save_page_to_csvs(page_num):
     try:
         match_urls = get_match_urls(page_num)
 
-        # Process all matches in the page
+        # Process all matches in the page (Change number of processes as needed)
         with ProcessPoolExecutor(max_workers=4) as executor:
             match_data = list(filter(None, executor.map(get_player_from_map_data, match_urls)))
 
@@ -308,7 +312,7 @@ if __name__ == "__main__":
     # Start timer
     start_time = time.time()
 
-    # Number of pages to fetch
+    # Number of pages to fetch (Change As Needed)
     results_final_page_num = 10
 
     # Process each page and save to CSV
