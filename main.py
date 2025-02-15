@@ -88,7 +88,7 @@ def extract_round_data(map_element):
     
     # Create the headers for the table
     table_header = team_1_table.find("tr").find_all("th")
-    table_header = ["Map", "Win/Lose By", "Team"] + [th.get("title", "Player") for th in table_header]
+    table_header = ["Map", "Win/Lose By", "Player"] + [th.get("title", "Team") for th in table_header]
     table_data.append(table_header)
 
     rows = team_1_table.find_all("tr")[1:]
