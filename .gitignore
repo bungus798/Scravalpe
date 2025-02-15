@@ -2,3 +2,5 @@ venv/
 __pycache__/
 match_results/
 combined_match_results/
+player_results/
+combined_player_results/

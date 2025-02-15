@@ -12,20 +12,16 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# Initialize the Chrome driver
-service = Service("/Users/anguskongyeung/Documents/Angus' Folder/Personal/Coding/Scravalpe/chromedriver")
-options = Options()
-options.add_argument("--headless")
-driver = webdriver.Chrome(service=service, options=options)
 
 # Base URL
 base_url = "https://www.vlr.gg"
 
 # Folder to save the CSV files
-output_folder = "match_results"
-
+match_results_folder = "match_results"
+player_results_folder = "player_results"
 # Create if it doesn't exist
-os.makedirs(output_folder, exist_ok=True)
+os.makedirs(match_results_folder, exist_ok=True)
+os.makedirs(player_results_folder, exist_ok=True)
 
 # List of User-Agent strings for randomization so the website doesn't block me ;(
 USER_AGENTS = [
@@ -44,6 +40,26 @@ def get_headers():
         "Referer": base_url,
     }
 
+# Initialize the Chrome driver
+options = Options()
+options.add_argument("--headless")
+options.add_argument('--disable-gpu')
+options.add_argument('--no-sandbox')
+options.add_argument('--disable-dev-shm-usage')
+
+# Possibly disable images, notifications, etc.
+prefs = {"profile.managed_default_content_settings.images": 2}
+options.add_experimental_option("prefs", prefs)
+
+user_agent = random.choice(USER_AGENTS)
+options.add_argument(f"user-agent={user_agent}")
+
+service = Service("/Users/anguskongyeung/Documents/Angus' Folder/Personal/Coding/Scravalpe/chromedriver")
+
+def create_driver():
+    driver = webdriver.Chrome(service=service, options=options)
+    return driver
+
 def extract_round_data(map_element):
     # Get the player stats
     soup2 = BeautifulSoup(map_element, "html.parser")
@@ -58,7 +74,7 @@ def extract_round_data(map_element):
     
     map_name = score_header.find("div", class_="map").find("span", style="position: relative;")
     map_name = map_name.text.strip().replace("PICK", "").strip()
-    print(team1_round_score, team2_round_score, map_name)
+    # print(team1_round_score, team2_round_score, map_name)
 
     # Get the player stats
     team_1_table = soup2.find_all("table", class_="wf-table-inset")[0]
@@ -66,15 +82,20 @@ def extract_round_data(map_element):
 
     table_data = []
     
+    # Create the headers for the table
     table_header = team_1_table.find("tr").find_all("th")
-    table_header = [th.get("title", "Player") for th in table_header]
-    table_header.insert(1, "Team")
+    table_header = ["Map", "Win/Lose By", "Team"] + [th.get("title", "Player") for th in table_header]
     table_data.append(table_header)
 
     rows = team_1_table.find_all("tr")[1:]
 
     for row in rows:
         row_data = []
+        
+        # Get the round score difference and map name
+        row_data.append(map_name)
+        score_diff = int(team1_round_score) - int(team2_round_score)
+        row_data.append(f"+{score_diff}" if score_diff > 0 else str(score_diff))
 
         # Get the name of players
         player_cell = row.find("td", class_="mod-player")
@@ -102,6 +123,11 @@ def extract_round_data(map_element):
     for row in rows:
         row_data = []
 
+        # Get the round score difference and map name
+        row_data.append(map_name)
+        score_diff = int(team2_round_score) - int(team1_round_score)
+        row_data.append(f"+{score_diff}" if score_diff > 0 else str(score_diff))
+
         # Get the name of players
         player_cell = row.find("td", class_="mod-player")
         name_div = player_cell.find("div", class_="text-of")
@@ -123,36 +149,70 @@ def extract_round_data(map_element):
             row_data.append(col.text.strip())
         table_data.append(row_data)
 
-    # Create a DataFrame
-    df = pd.DataFrame(table_data[1:], columns=table_data[0])
-    print(df)
+    return table_data
 
 def get_player_from_map_data(url):
     try:
+        driver = create_driver()
         driver.get(url)
         
+        # Process the match
+        html = driver.page_source
+        match_info = process_match(html)
+
         maps = driver.find_elements(By.XPATH, value="//div[contains(@class, 'vm-stats-gamesnav-item') and @data-disabled='0']")
         
+        player_data = []
+        total_data = []
+
         if len(maps) <= 0:
             only_map = driver.find_element(By.XPATH, "//div[contains(@class, 'vm-stats-game mod-active')]").get_attribute("innerHTML")
-            extract_round_data(only_map)
+            player_data = extract_round_data(only_map)
+
+            # Update Columns with new headers
+            player_data[0].insert(0, "Match Event")
+            player_data[0].insert(1, "Match Stage")
+            
+            for i in range(1, len(player_data)):
+                player_data[i].insert(0, match_info["Match Event"])
+                player_data[i].insert(1, match_info["Match Stage"])
+
+            print(f"Processed {url}")
+            driver.close()
+            return (match_info, player_data)
 
         else:
             # Click each map button and process the data
             for i in range(1, len(maps)):
                 maps[i].click()
                 match_stats = driver.find_element(By.XPATH, "//div[contains(@class, 'vm-stats-game') and @style='display: block;']").get_attribute("innerHTML")
-                extract_round_data(match_stats)
-        
+                player_data = extract_round_data(match_stats)
+
+                # Update Columns with new headers
+                player_data[0].insert(0, "Match Event")
+                player_data[0].insert(1, "Match Stage")
+                
+                for i in range(1, len(player_data)):
+                    player_data[i].insert(0, match_info["Match Event"])
+                    player_data[i].insert(1, match_info["Match Stage"])
+
+                if not total_data:
+                    total_data.append(player_data[0])
+                total_data += player_data[1:]
+
+            print(f"Processed {url}")
+            driver.close()
+            return [match_info, total_data]
+
+
     except Exception as e:
         print(f"Error processing {url}: {e}")
         return None
     
 # Function to process a single match
-def process_match(url):
+def process_match(html):
     try:
-        response = requests.get(url, headers=get_headers())
-        soup = BeautifulSoup(response.text, "html.parser")
+        soup = BeautifulSoup(html, "html.parser")
 
         # Match event
         match_event_div = soup.find("div", class_="match-header-event-series")
@@ -198,7 +258,7 @@ def process_match(url):
             "Winner": winner,
         }
     except Exception as e:
-        print(f"Error processing {url}: {e}")
+        print(f"Error processing: {e}")
         return None
 
 # Fetch all match URLs from a specific results page
@@ -212,19 +272,35 @@ def get_match_urls(page_num):
     return [base_url + link['href'] for link in matches if 'href' in link.attrs]
 
 # Save matches from a specific page to a CSV file
-def save_page_to_csv(page_num):
+def save_page_to_csvs(page_num):
     try:
         match_urls = get_match_urls(page_num)
 
         # Process all matches in the page
-        with ProcessPoolExecutor() as executor:
-            match_data = list(filter(None, executor.map(process_match, match_urls)))
+        with ProcessPoolExecutor(max_workers=4) as executor:
+            match_data = list(filter(None, executor.map(get_player_from_map_data, match_urls)))
 
         # Save the match data to a CSV file
-        csv_file = os.path.join(output_folder, f"matches_page_{page_num}.csv")
-        df = pd.DataFrame(match_data)
-        df.to_csv(csv_file, index=False)
-        print(f"Page {page_num} data saved to {csv_file}")
+        match_csv_file = os.path.join(match_results_folder, f"matches_page_{page_num}.csv")
+        player_csv_file = os.path.join(player_results_folder, f"players_page_{page_num}.csv")
+        
+        
+        for i in range(len(match_data)):
+            match_df = pd.DataFrame([match_data[i][0]])
+            player_df = pd.DataFrame(match_data[i][1][1:], columns=match_data[i][1][0])
+
+            if not os.path.isfile(match_csv_file):
+                match_df.to_csv(match_csv_file, index=False)
+            else:
+                match_df.to_csv(match_csv_file, mode='a', header=False, index=False)
+
+            if not os.path.isfile(player_csv_file):
+                player_df.to_csv(player_csv_file, index=False)
+            else:
+                player_df.to_csv(player_csv_file, mode='a', header=False, index=False)
+    
+        print(f"Page {page_num} data saved to {match_csv_file} and {player_csv_file}")
+
     except Exception as e:
         print(f"Error saving page {page_num}: {e}")
 
@@ -232,14 +308,13 @@ if __name__ == "__main__":
     # Start timer
     start_time = time.time()
 
-    # # Number of pages to fetch
-    # results_final_page_num = 1
+    # Number of pages to fetch
+    results_final_page_num = 10
 
-    # # Process each page and save to CSV
-    # for page_num in range(1, results_final_page_num + 1):
-    #     save_page_to_csv(page_num)
-    get_player_from_map_data("https://www.vlr.gg/220448/fnatic-vs-evil-geniuses-champions-tour-2023-masters-tokyo-gf/?game=132713&tab=overview")
-    get_player_from_map_data("https://www.vlr.gg/434162/galatasaray-esports-vs-stanbul-wildcats-challengers-league-2025-t-rkiye-birlik-kickoff-w2")
+    # Process each page and save to CSV
+    for page_num in range(2, results_final_page_num + 1):
+        save_page_to_csvs(page_num)
+
     # End timer
     end_time = time.time()
     elapsed_time = end_time - start_time
