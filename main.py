@@ -317,7 +317,7 @@ if __name__ == "__main__":
     results_final_page_num = 10
 
     # Process each page and save to CSV
-    for page_num in range(2, results_final_page_num + 1):
+    for page_num in range(1, results_final_page_num + 1):
         save_page_to_csvs(page_num)
 
     # End timer
