@@ -95,7 +95,7 @@ pip install -r requirements.txt
    ```python
    results_final_page_num = 10
    ```
-   This will scrape pages 2 through 10 on [vlr.gg](https://vlr.gg/matches/results).
+   This will scrape pages 1 through 10 on [vlr.gg](https://vlr.gg/matches/results).
 
 3. **Run**:
    ```bash
