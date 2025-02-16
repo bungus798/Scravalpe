@@ -59,7 +59,7 @@ options.add_experimental_option("prefs", prefs)
 user_agent = random.choice(USER_AGENTS)
 options.add_argument(f"user-agent={user_agent}")
 
-path_chromedriver = "/Users/anguskongyeung/Documents/Angus' Folder/Personal/Coding/Scravalpe/chromedriver"
+path_chromedriver = "/path/to/your/chromedriver"
 service = Service(path_chromedriver)
 
 def create_driver():
